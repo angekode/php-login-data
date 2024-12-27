@@ -4,7 +4,8 @@
 	</head>
 	<body>
 		<p>Hello</p>
-		<form action="index.php">
+		<p style="font-style: italic;">Maximum de 16 charactères alphanumériques, espaces ou tirets.</p>
+		<form action="index.php" method="post">
 			<label for="user_name">Nom</label>
 			<input type="text" name="user_name"/>
 
@@ -18,20 +19,42 @@
 		</form>
 		<?php
 
+			function is_valid_entry($entry,$maxLength) {
+				$entryLength = strlen($entry);
+				if ($entryLength == 0 || $entryLength > $maxLength) {
+					return false;
+				}
+
+				if (preg_match("/^[\w\s\-]+$/",$entry) == 0) {
+					return false;
+				}
+				return true;
+			}
+
 			// Nom d'utilisateur et mots de passe fournis ?
-			if (!isset($_GET['user_name']) or !isset($_GET['user_password'])) {
+			if (!isset($_POST['user_name']) || !isset($_POST['user_password'])) {
 				echo "<p>Mot de passe ou nom d'utilisateur manquant</p>";
 				exit();
 			}
 
-			$userNameSubmitted = $_GET['user_name'];
-			$userPasswordSubmitted = $_GET['user_password'];
+			$userNameSubmitted = $_POST['user_name'];
+			if (!is_valid_entry($userNameSubmitted,16)) {
+				echo "<p>Nom d'utilisateur invalide";
+				exit();
+			}
+
+			$userPasswordSubmitted = $_POST['user_password'];
+			if (!is_valid_entry($userPasswordSubmitted,16)) {
+				echo "<p>Nom d'utilisateur invalide</p>";
+				exit();
+			}
+
 			$loadedJson = file_get_contents("names.txt");
-			$userItemsArray = json_decode($loadedJson,true);
-			
+			$userItemsArray = ($loadedJson == false) ? [] : json_decode($loadedJson,true);
 			$userItem = [];
+			
 			// Utilisateur existant, on récupère l'item
-			if ($userItemsArray != null and array_key_exists($userNameSubmitted,$userItemsArray)) {
+			if (!empty($userItemsArray) && array_key_exists($userNameSubmitted,$userItemsArray)) {
 				$userItem = $userItemsArray[$userNameSubmitted];
 				if ($userItem["user_password"] != $userPasswordSubmitted) {
 					echo "<p>Mauvais mot de passe fourni</p>";
@@ -48,11 +71,14 @@
 			} 
 
 			// Données fournies => remplace
-			if (isset($_GET['user_data'])) {
-				$userSubmittedData = $_GET['user_data'];
-				if (strcmp($userSubmittedData,"") != 0) {
+			if (isset($_POST['user_data'])) {
+				$userSubmittedData = $_POST['user_data'];
+				if (is_valid_entry($userSubmittedData,16)) {
 					$userItem["user_data"] = $userSubmittedData;
 					echo "<p>Les données suivantes ont été enregistrées: " . $userSubmittedData;
+				} else {
+					echo "<p>Les données fournies n'ont pas le bon format</p>";
+					exit();
 				}
 			}
 
