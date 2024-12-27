@@ -19,7 +19,7 @@
 		</form>
 		<?php
 
-			function is_valid_entry($entry,$maxLength) {
+			function is_valid_entry($entry, $maxLength) {
 				$entryLength = strlen($entry);
 				if ($entryLength == 0 || $entryLength > $maxLength) {
 					return false;
@@ -38,13 +38,13 @@
 			}
 
 			$userNameSubmitted = $_POST['user_name'];
-			if (!is_valid_entry($userNameSubmitted,16)) {
+			if (!is_valid_entry($userNameSubmitted, 16)) {
 				echo "<p>Nom d'utilisateur invalide";
 				exit();
 			}
 
 			$userPasswordSubmitted = $_POST['user_password'];
-			if (!is_valid_entry($userPasswordSubmitted,16)) {
+			if (!is_valid_entry($userPasswordSubmitted, 16)) {
 				echo "<p>Nom d'utilisateur invalide</p>";
 				exit();
 			}
@@ -54,15 +54,17 @@
 			$userItem = [];
 			
 			// Utilisateur existant, on récupère l'item
-			if (!empty($userItemsArray) && array_key_exists($userNameSubmitted,$userItemsArray)) {
+			if (!empty($userItemsArray) && array_key_exists($userNameSubmitted, $userItemsArray)) {
 				$userItem = $userItemsArray[$userNameSubmitted];
-				if ($userItem["user_password"] != $userPasswordSubmitted) {
+				if (!password_verify($userPasswordSubmitted, $userItem["user_password"])) {
 					echo "<p>Mauvais mot de passe fourni</p>";
 					exit();
 				}
 			// Utilisateur non existant, on crée l'item
 			} else {
-				$userItem = ["user_password" => $userPasswordSubmitted];
+				// On stock le hash du mot de passe fourni, attention le hash généré n'est pas le même
+				// à chaque appel, donc il faut utiliser password_verify() le prochain coup.
+				$userItem = ["user_password" => password_hash($userPasswordSubmitted, PASSWORD_DEFAULT)];
 			}
 
 			// Données existantes => affiche
@@ -73,7 +75,7 @@
 			// Données fournies => remplace
 			if (isset($_POST['user_data'])) {
 				$userSubmittedData = $_POST['user_data'];
-				if (is_valid_entry($userSubmittedData,16)) {
+				if (is_valid_entry($userSubmittedData, 16)) {
 					$userItem["user_data"] = $userSubmittedData;
 					echo "<p>Les données suivantes ont été enregistrées: " . $userSubmittedData;
 				} else {
@@ -84,7 +86,7 @@
 
 			$userItemsArray[$userNameSubmitted] = $userItem;
 			$jsonDataToSave = json_encode($userItemsArray);
-			file_put_contents("names.txt",$jsonDataToSave);
+			file_put_contents("names.txt", $jsonDataToSave);
 			echo "<p>Données enregistrées</p>";
 		?>
 	</body>
