@@ -1,188 +1,139 @@
-
-
+<?php declare(strict_types=1); ?>
 <html>
 	<head>
-		<title>Test php</title>
+		<title>Data App</title>
 	</head>
 	<body>
-		<p>Hello</p>
-		<p style="font-style: italic;">Maximum de 16 charactères alphanumériques, espaces ou tirets.</p>
-		<form action="index.php" method="post">
-			<label for="user_name">Nom</label>
-			<input type="text" name="user_name"/>
 
-			<label for="user_password">Mot de passe</label>
-			<input type="text" name="user_password"/>
+<?php
 
-			<label for="user_data">Données</label>
-			<input type="text" name="user_data"/>
+	require_once "class/DataBase.php";
+	require_once "class/ClientRequest.php";
+	require_once "class/RequestField.php";
 
-			<input type="submit" value="Envoyer"/>
-		</form>
-		<?php
 
-			function is_valid_entry($entry, $maxLength) {
-				$entryLength = strlen($entry);
-				if ($entryLength == 0 || $entryLength > $maxLength) {
-					return false;
-				}
+	// 1) On récupère les données du client (ClientRequest),
+	// les données enregistrées (DataBase), et on les stocke 
+	// dans un objet (SessionInfo)
 
-				if (preg_match("/^[\w\s\-]+$/",$entry) == 0) {
-					return false;
-				}
-				return true;
+	// SessionInfo: contient toutes les données utiles à toutes les pages php
+	class SessionInfo {
+		public bool $isConnected = false;
+		public DataBaseUserInfo $userInfo;
+		public array $messages = [];
+	}
+	$sessionInfo = new SessionInfo();
+
+	// ClientRequest: donne les champs remplis par le client, les boutons actionnés, les cookies
+	$clientRequest = new ClientRequest();
+	$clientRequest->readFieldsFromClient(
+		[
+			"header_input_name",
+			"header_input_password",
+			"header_button_login",
+			"main_input_name",
+			"main_input_password",
+			"main_input_data",
+			"main_button_validation",
+		],
+		RequestFieldType::Post
+	);
+
+	$clientRequest->readFieldsFromClient(
+		["user_token"],
+		RequestFieldType::Cookie
+	);
+
+	// DataBase: contient les données enregistrées des précédents appels
+	$dataBase = new DataBase("usersinfo.json","cookies.json");
+	$dataBase->loadFromFiles();
+
+	// 2) On connecte le client s'il a le bon cookie
+
+	// Est qu'il existe un cookie chez le client qui permet de le reconnaitre 
+	// et donc de le connecter automatiquement ?
+	if ($clientRequest->fieldExistsAndValid("user_token", RequestFieldType::Cookie)) {
+		$cookieField = $clientRequest->getField("user_token", RequestFieldType::Cookie);
+		$tokenValue = $cookieField->value;
+		if ($dataBase->cookieExists($tokenValue)) {
+			$userNameFromToken = $dataBase->getUserNameFromCookie($tokenValue);
+			$userInfoSaved = $dataBase->getUserInfo($userNameFromToken);
+			// Si le nom enregistré dans la base des cookies est également enregistré 
+			// dans la base des users on le connecte
+			if ($userInfoSaved->name === $userNameFromToken) {
+				$sessionInfo->userInfo = $userInfoSaved;
+				$sessionInfo->isConnected = true;
 			}
+		}
+	}
 
-			function save_user_info_array($serverSideUsersInfoArray) {
-				$jsonDataToSave = json_encode($serverSideUsersInfoArray);
-				if (file_put_contents("usersinfos.json", $jsonDataToSave) === false) {
-					return false;
-				} else {
-					return true;
-				}
+	// 3) Action demandée par le client, on configure les données dans $sessionInfo en fonction
+
+	// Login ?
+	if ($clientRequest->fieldExistsAndValid("header_button_login", RequestFieldType::Post)
+		&& $clientRequest->fieldExistsAndValid("header_input_name", RequestFieldType::Post)
+		&& $clientRequest->fieldExistsAndValid("header_input_password", RequestFieldType::Post)
+	) {
+		$userNameSubmitted = $clientRequest->getField("header_input_name", RequestFieldType::Post);
+		$userPasswordSubmitted = $clientRequest->getField("header_input_password", RequestFieldType::Post);
+		// on a déjà eu cet utilisateur, on vérifie le mot du passe et on le connecte
+		if ($dataBase->userExists($userNameSubmitted->value)) {
+			echo "1";
+			$serverSideUserInfo = $dataBase->getUserInfo($userNameSubmitted->value);
+			if (password_verify($userPasswordSubmitted->value, $serverSideUserInfo->password)) {
+				$sessionInfo->userInfo = $serverSideUserInfo;
+				$sessionInfo->isConnected = true;
 			}
+		} else {
+			echo $userPasswordSubmitted->value;
+			$newUserInfo = DataBaseUserInfo::create($userNameSubmitted->value, password_hash($userPasswordSubmitted->value,PASSWORD_DEFAULT),"");
+			$dataBase->putUserInfo($newUserInfo);
+			$token = $dataBase->generate_user_token();
+			$dataBase->putCookie($token, $userNameSubmitted->value);
+			$sessionInfo->userInfo = $newUserInfo;
+			$sessionInfo->isConnected = true;
+			setcookie("user_token",$token);
+			$dataBase->saveToFiles();
+		}
 
-			function load_user_info_array() {
-				$loadedJson = file_get_contents("usersinfos.json");
-				if ($loadedJson === false) {
-					return [];
-				}
-				$serverSideUsersInfoArray = json_decode($loadedJson, true);
-				if ($serverSideUsersInfoArray === null) {
-					return [];
-				}
+	// Envoie de données demandé par le client
+	} else if ($clientRequest->fieldExistsAndValid("main_button_validation", RequestFieldType::Post)) {
 
-				return $serverSideUsersInfoArray;
+		// L'utilisateur a bien remplie les champs nom et mot de passe ?
+		if ($clientRequest->fieldExistsAndValid("main_input_name", RequestFieldType::Post)
+			&& $clientRequest->fieldExistsAndValid("main_input_password", RequestFieldType::Post)
+			&& $clientRequest->fieldExistsAndValid("main_input_data", RequestFieldType::Post)
+		) {
+			$userNameSubmitted = $clientRequest->getField("main_input_name", RequestField::Post);
+			$userPasswordSubmitted = $clientRequest->getField("main_input_password", RequestField::Post);
+			$userDataSubmitted = $clientRequest->getField("main_input_data", RequestField::Post);
+
+			// on a déjà eu cet utilisateur, on vérifie le mot du passe, mais on ne le connecte pas
+			if ($dataBase->userExists($userNameSubmitted)) {
+				$serverSideUserInfo = $dataBase->getUserInfo($userNameSubmitted);
+				if (password_verify($userPasswordSubmitted, $serverSideUserInfo->password)) {
+					$sessionInfo->userInfo = $serverSideUserInfo;
+				}
+			// on n'a jamais eu cet utilisateur on l'enregistre
+			} else {
+				$userInfo = new DataBaseUserInfo($userNameSubmitted, password_hash($userPasswordSubmitted, DEFAULT_ALGO), $userDataSubmitted);	
+				$dataBase->putUserInfo($userInfo);
 			}
+		}
 
-			function get_user_info($userName, $serverSideUsersInfoArray) {
-				if (empty($serverSideUsersInfoArray) || !array_key_exists($userName, $serverSideUsersInfoArray)) {
-					return [];
-				}
-				return $serverSideUsersInfoArray[$userName];
-			}
+	// 1er chargement de page
+	} else {
 
-			function set_user_info($userName, $userInfo, $usersInfoArray) {
-				if ($userInfo == []) {
-					return false;
-				}
-				$usersInfoArray[$userName] = $userInfo;
-				return true;
-			}
-
-			function save_users_tokens_array($tokensArray) {
-				$jsonString = json_encode($tokensArray);
-				if (file_put_contents("userstokens.json",$jsonString) === false) {
-					return false;
-				} else {
-					return true;
-				}
-			}
-
-			function load_users_tokens_array() {
-				$loadedJson = file_get_contents("userstokens.json");
-				if ($loadedJson === false) {
-					return false;
-				}
-				$serverSideTokensArray = json_decode($loadedJson, true);
-				if ($serverSideTokensArray === null) {
-					return [];
-				}
-
-				return $serverSideTokensArray;
-			}
-
-			function generate_user_token() {
-				return bin2hex(random_bytes(16));
-			}
+	}
 
 
-			$messagesToDisplay = [];
-			
-			try {
-				$clientSideToken = "";
-				$serverSideTokensArray = [];
-				
-				if (isset($_COOKIE["user_token"])) {
-					$clientSideToken = $_COOKIE["user_token"];
-					$serverSideTokensArray = load_users_tokens_array();
-					if (!empty($serverSideTokensArray) && array_key_exists($clientSideToken, $serverSideTokensArray)) {
-						$serverSideUserName = $serverSideTokensArray[$clientSideToken];
-						array_push($messagesToDisplay, "Re Bonjour " . $serverSideUserName);
-					} else {
-						// token de session non valide
-						$clientSideToken = "";
-					}
-				}
-
-				// Nom d'utilisateur et mots de passe fournis ?
-				if (!isset($_POST['user_name']) || !isset($_POST['user_password']) || !isset($_POST['user_data'])) {
-					array_push($messagesToDisplay, "Mot de passe, nom d'utilisateur ou données manquantes");
-					throw new Exception();
-				}
+	// 4) On affiche les pages en fonction des données contenues dans $sessionInfo
 	
-				$submittedUserName = $_POST['user_name'];
-				if (!is_valid_entry($submittedUserName, 16)) {
-					array_push($messagesToDisplay, "Nom d'utilisateur invalide");
-					throw new Exception();
-				}
-	
-				$submittedPassword = $_POST['user_password'];
-				if (!is_valid_entry($submittedPassword, 16)) {
-					array_push($messagesToDisplay, "Mot de passe invalide");
-					throw new Exception();
-				}
-	
-				$serverSideUsersInfoArray = load_user_info_array();
-				$serverSideUsersInfoArray = get_user_info($submittedUserName, $serverSideUsersInfoArray);
-				
-				// Utilisateur existant, on vérifie le mot de passe
-				if (!empty($serverSideUsersInfoArray) && !password_verify($submittedPassword, $serverSideUsersInfoArray["user_password"])) {
-					array_push($messagesToDisplay, "Mauvais mot de passe fourni");
-					throw new Exception();
-				} 
-	
-				// Utilisateur non existant, on crée l'item
-				if (empty($serverSideUsersInfoArray)) {
-					// On stock le hash du mot de passe fourni, attention le hash généré n'est pas le même
-					// à chaque appel, donc il faut utiliser password_verify() le prochain coup.
-					$serverSideUsersInfoArray = ["user_password" => password_hash($submittedPassword, PASSWORD_DEFAULT)];
-				}
-				
-				// Données existantes => affiche
-				if (array_key_exists("user_data",$serverSideUsersInfoArray))  {
-					array_push($messagesToDisplay, "<p>Salut " . $submittedUserName . ", tes données: " . $serverSideUsersInfoArray["user_data"]);
-				}
-	
-				// Données fournies => remplace
-				$submittedUserData = $_POST['user_data'];
-				if (is_valid_entry($submittedUserData, 16)) {
-					$serverSideUsersInfoArray["user_data"] = $submittedUserData;
-					array_push($messagesToDisplay, "Les données suivantes ont été enregistrées: " . $submittedUserData);
-				}
-	
-				$serverSideUsersInfoArray[$submittedUserName] = $serverSideUsersInfoArray;
-				save_user_info_array($serverSideUsersInfoArray);
-				array_push($messagesToDisplay, "<p>Données enregistrées");
-	
-				if (empty($clientSideToken)) {
-					$clientSideToken = generate_user_token();
-					$serverSideTokensArray = load_users_tokens_array();
-					$serverSideTokensArray[$clientSideToken] = $submittedUserName;
-					if (save_users_tokens_array($serverSideTokensArray) === false) {
-						throw new Exception();
-					}
-					setcookie("user_token",$clientSideToken,time()+3600);
-					array_push($messagesToDisplay, "Nouveau cookie");
-				}
+	require "view/header.php"; // nécessite: $isConnected, $userName
+	require "view/main.php"; // nécessite: $isConnected, $userData
+	require "view/footer.php"; // nécessite $messages
 
-			} catch(Exception $e) {
-				error_log($e->getMessage());
-			}
-		?>
+?>
 
-		<?php foreach($messagesToDisplay as $message) : ?>
-			<p><?= $message ?></p>
-		<?php endforeach; ?>
 	</body>
 </html>
