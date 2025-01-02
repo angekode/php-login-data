@@ -2,7 +2,7 @@
     <p style="font-style: italic;">Maximum de 16 charactères alphanumériques, espaces ou tirets.</p>
     <form action="index.php" method="post">
         <label for="main_input_data">Données</label>
-        <input type="text" name="main_input_data" value=<?= $userData ?>/>
+        <input type="text" name="main_input_data" value="<?=$sessionInfo->userInfo->data?>"/>
         <input type="submit" value="Envoyer" name="main_button_validation"/>
     </form>
 
@@ -15,9 +15,7 @@
         <label for="main_input_password">Mot de passe</label>
         <input type="text" name="main_input_password"/>
 
-        <label for="main_input_data">Données</label>
-        <input type="text" name="main_input_data"/>
-
+        <input type="text" name="main_input_data" value="<?=$sessionInfo->userInfo->data?>"/>
         <input type="submit" value="Envoyer" name="main_button_validation"/>
     </form>
 

@@ -6,15 +6,10 @@ class DataBaseUserInfo {
     public string $data = "";
 
     public static function create(string $name, string $password, string $data) : DataBaseUserInfo {
-        echo "hi1";
         $newObject = new self();
-        echo "hi1";
         $newObject->name = $name;
-        echo "hi1";
         $newObject->password = $password;
-        echo "hi1";
         $newObject->data = $data;
-        echo "hi1";
         return $newObject;
     }
 
@@ -123,8 +118,8 @@ class DataBase {
 
     public function putUserInfo(DataBaseUserInfo $userInfoToAdd) : bool {
         if ($this->userExists($userInfoToAdd->name)) {
-            $oldUserInfo = $this->usersInfo[$userInfoToAdd->name];
-            $oldUserInfo->updateFromOther($userInfoToAdd);
+            $oldUserInfo = $this->getUserInfo($userInfoToAdd->name);
+            $oldUserInfo->updateDataFromOther($userInfoToAdd);
             return true;
 
         } else {
@@ -153,7 +148,7 @@ class DataBase {
         foreach($loadedArray as $object) {
             array_push($newUsersArray, DataBaseUserInfo::fromObject($object));
         }
-    
+
         return $newUsersArray;
     }
 
